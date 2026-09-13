@@ -115,12 +115,12 @@ tmp/ と outputs/ は動画処理用の一時ファイル・出力ファイル�
 白色検出は映像の内容によって結果が変わるため、実際の動画を確認しながら設定値を調整してください。
 
 ## 使用技術
-・Python
-・Flask
-・OpenCV
-・NumPy
-・FFmpeg
-・HTML / CSS / JavaScript
+- Python
+- Flask
+- OpenCV
+- NumPy
+- FFmpeg
+- HTML / CSS / JavaScript
 
 ## License
-License is not currently specified.
+This project is licensed under the MIT License.
