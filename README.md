@@ -37,9 +37,10 @@
 ## インストール
 
 ### 1. リポジトリを取得
-
-git clone https://github.com/USERNAME/REPOSITORY.git
-cd REPOSITORY
+```bash
+git clone https://github.com/omesoftwarelab/video-blur-tool.git
+cd video-blur-tool
+```
 
 ### 2. Pythonパッケージをインストール
 ```bash
