@@ -42,17 +42,22 @@ git clone https://github.com/USERNAME/REPOSITORY.git
 cd REPOSITORY
 
 ### 2. Pythonパッケージをインストール
+```bash
 pip install -r requirements.txt
+```
 
 ### 3. FFmpegをインストール
 
 FFmpegがPATHから実行できる状態にしてください。
-
+```bash
 ffmpeg -version
 ffprobe -version
+```
 
 ## 起動
+```bash
 python app.py
+```
 
 ブラウザで以下を開きます。
 http://127.0.0.1:5000
