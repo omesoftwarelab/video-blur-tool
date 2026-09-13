@@ -88,6 +88,8 @@ http://127.0.0.1:5000
 OpenCVのGaussian Blurを使用してぼかします。
 
 ## ディレクトリ構成
+
+```text
 .
 ├── app.py
 ├── requirements.txt
@@ -97,6 +99,7 @@ OpenCVのGaussian Blurを使用してぼかします。
 │   └── index.html
 ├── tmp/
 └── outputs/
+```
 
 tmp/ と outputs/ は動画処理用の一時ファイル・出力ファイルを保存するディレクトリです。
 
