@@ -1,0 +1,509 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>動画ぼかし範囲指定</title>
+<style>
+    body{
+        font-family:Arial,sans-serif;
+        margin:20px;
+        background:#f2f2f2;
+    }
+
+    h1{
+        margin-bottom:15px;
+    }
+
+    #videoArea{
+        position:relative;
+        display:block;
+        background:#000;
+        width:fit-content;
+        max-width:850px;
+        margin-top:10px;
+    }
+
+    #video{
+        display:block;
+        max-width:850px;
+        max-height:600px;
+    }
+
+    #canvas{
+        position:absolute;
+        left:0;
+        top:0;
+        cursor:crosshair;
+    }
+
+    button,
+    input,
+    select{
+        margin:4px;
+        padding:7px;
+    }
+
+    button.selected{
+        background:#2563eb;
+        color:white;
+    }
+
+    #rangeButtons{
+        background:white;
+        padding:10px;
+        margin-top:10px;
+        max-width:850px;
+    }
+
+    #previewBox{
+        background:white;
+        padding:12px;
+        margin-top:10px;
+        max-width:850px;
+    }
+
+    #previewCanvas{
+        display:block;
+        max-width:100%;
+        background:#000;
+    }
+
+    #settings{
+        background:white;
+        padding:12px;
+        margin-top:10px;
+        max-width:850px;
+    }
+
+    .setting{
+        display:inline-block;
+        margin:5px 15px 5px 0;
+    }
+
+    .setting label{
+        display:block;
+        font-size:13px;
+    }
+
+    .setting input{
+        width:90px;
+    }
+
+    #status{
+        background:white;
+        padding:12px;
+        margin-top:10px;
+        max-width:850px;
+    }
+
+    #progressBox{
+        margin-top:10px;
+        max-width:850px;
+        background:white;
+        padding:12px;
+    }
+</style>
+</head>
+
+
+<body>
+<h1>動画のぼかし範囲指定</h1>
+
+<input type="file" id="file" accept="video/*">
+<br>
+
+<div id="videoArea">
+  <video id="video" preload="metadata"></video>
+  <canvas id="canvas"></canvas>
+</div>
+
+<div id="rangeButtons">
+  <button id="excludeButton" class="selected">除外範囲を追加</button>
+  <button id="forceButton">強制ぼかし範囲を追加</button>
+</div>
+
+<div id="previewBox">
+  <h3>プレビュー（白色検出＋強制ぼかし範囲）</h3>
+  <canvas id="previewCanvas"></canvas>
+</div>
+
+<div id="settings">
+  <h3>ぼかし設定</h3>
+
+  <div class="setting">
+    <label>白色の下限</label>
+    <input id="whiteMin" type="number" value="180" min="0" max="255">
+  </div>
+
+  <div class="setting">
+    <label>白色の上限</label>
+    <input id="whiteMax" type="number" value="230" min="0" max="255">
+  </div>
+
+  <div class="setting">
+    <label>色差</label>
+    <input id="colorDiff" type="number" value="35" min="0" max="255">
+  </div>
+
+  <div class="setting">
+    <label>ぼかし方式</label>
+    <select id="blurType">
+      <option value="mosaic" selected>モザイク</option>
+      <option value="gaussian">ガウシアン</option>
+    </select>
+  </div>
+
+  <div class="setting">
+    <label>マスク拡張</label>
+    <input id="maskDilate" type="number" value="20" min="1" max="100">
+  </div>
+
+  <div class="setting">
+    <label>ぼかし強度（奇数）</label>
+    <input id="blurSize" type="number" value="151" min="3" max="501" step="2">
+  </div>
+
+  <div class="setting">
+    <label>モザイクブロックサイズ</label>
+    <input id="mosaicBlock" type="number" value="12" min="2" max="100">
+  </div>
+
+  <div class="setting">
+    <label>境界ぼかし（奇数）</label>
+    <input id="edgeBlur" type="number" value="31" min="3" max="101" step="2">
+  </div>
+
+  <br>
+
+  <button id="resetSettings">設定を初期値に戻す</button>
+  <button id="previewButton">プレビュー更新</button>
+</div>
+
+<div id="status"></div>
+
+<div>
+  <button id="processButton">処理開始</button>
+</div>
+
+<div id="progressBox" style="display:none">
+  <div style="background:#ddd;height:24px;border-radius:4px;overflow:hidden">
+    <div id="progressBar"
+         style="height:100%;width:0%;background:#2563eb;text-align:center;color:white;line-height:24px">
+      0%
+    </div>
+  </div>
+</div>
+
+
+<script>
+const fileInput=document.getElementById("file");
+const video=document.getElementById("video");
+const canvas=document.getElementById("canvas");
+const ctx=canvas.getContext("2d");
+const previewCanvas=document.getElementById("previewCanvas");
+const pctx=previewCanvas.getContext("2d");
+const statusBox=document.getElementById("status");
+
+let mode="exclude", ranges=[], dragging=false, startX=0, startY=0, currentRect=null;
+
+const defaults={whiteMin:180,whiteMax:230,colorDiff:35,blurType:"mosaic",maskDilate:20,blurSize:151,mosaicBlock:12,edgeBlur:31};
+const ids=Object.keys(defaults);
+
+function settings(){
+  const s={};
+  for(const id of ids){
+    let n=Number(document.getElementById(id).value);
+    if(!Number.isFinite(n)) n=defaults[id];
+    if(id==="blurType"){
+      s[id]=document.getElementById(id).value;
+      continue;
+    }
+    if(["blurSize","edgeBlur"].includes(id)){
+      n=Math.max(3,Math.min(id==="blurSize"?501:101,Math.round(n)));
+      if(n%2===0)n++;
+    }
+    s[id]=n;
+  }
+  return s;
+}
+document.getElementById("resetSettings").onclick=()=>{
+  for(const id of ids)document.getElementById(id).value=defaults[id];
+};
+
+fileInput.onchange=()=>{
+  const f=fileInput.files[0]; if(!f)return;
+  video.src=URL.createObjectURL(f); video.load();
+  ranges=[];
+};
+video.onloadedmetadata=resizeCanvas;
+video.onloadeddata=()=>{
+  resizeCanvas();
+
+  video.currentTime=0;
+
+  video.onseeked=()=>{
+    drawPreview();
+    video.onseeked=null;
+  };
+};
+window.onresize=resizeCanvas;
+
+function resizeCanvas(){
+  if(!video.videoWidth)return;
+  const r=video.getBoundingClientRect();
+  canvas.width=Math.round(r.width); canvas.height=Math.round(r.height);
+  canvas.style.width=r.width+"px"; canvas.style.height=r.height+"px";
+  drawRanges();
+}
+function normalize(x1,y1,x2,y2){
+  return {x:Math.min(x1,x2),y:Math.min(y1,y2),w:Math.abs(x2-x1),h:Math.abs(y2-y1)};
+}
+function pointerPos(e){
+  const r=canvas.getBoundingClientRect();
+  return {x:e.clientX-r.left,y:e.clientY-r.top};
+}
+function hitTestRange(p){
+  const sx=canvas.width/video.videoWidth, sy=canvas.height/video.videoHeight;
+  for(let i=ranges.length-1;i>=0;i--){
+    const a=ranges[i];
+    const x=a.x*sx, y=a.y*sy, w=a.w*sx, h=a.h*sy;
+    if(p.x>=x && p.x<=x+w && p.y>=y && p.y<=y+h)return i;
+  }
+  return -1;
+}
+canvas.onmousedown=e=>{
+  if(!video.videoWidth)return;
+  const p=pointerPos(e);
+  const hit=hitTestRange(p);
+  if(hit>=0){
+    ranges.splice(hit,1);
+    drawRanges();
+    drawPreview();
+    statusBox.textContent="クリックした枠を削除しました。";
+    return;
+  }
+  startX=p.x;startY=p.y;dragging=true;currentRect=null;
+};
+canvas.onmousemove=e=>{
+  if(!dragging)return;
+  const p=pointerPos(e);currentRect=normalize(startX,startY,p.x,p.y);drawRanges();
+};
+canvas.onmouseup=()=>{
+  if(!dragging||!currentRect){dragging=false;return;}
+  dragging=false;
+  if(currentRect.w<5||currentRect.h<5){currentRect=null;drawRanges();return;}
+  const sx=video.videoWidth/canvas.width, sy=video.videoHeight/canvas.height;
+  ranges.push({type:mode,x:Math.round(currentRect.x*sx),y:Math.round(currentRect.y*sy),
+               w:Math.round(currentRect.w*sx),h:Math.round(currentRect.h*sy)});
+  currentRect=null;
+  drawRanges();
+  drawPreview();
+};
+canvas.onmouseleave=()=>{dragging=false;currentRect=null;drawRanges();};
+
+function drawRanges(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  if(!video.videoWidth)return;
+  const sx=canvas.width/video.videoWidth,sy=canvas.height/video.videoHeight;
+  for(const a of ranges){
+    ctx.strokeStyle=a.type==="exclude"?"#2563eb":"#dc2626";
+    ctx.lineWidth=3;ctx.strokeRect(a.x*sx,a.y*sy,a.w*sx,a.h*sy);
+  }
+  if(currentRect){
+    ctx.strokeStyle=mode==="exclude"?"#2563eb":"#dc2626";
+    ctx.lineWidth=3;ctx.strokeRect(currentRect.x,currentRect.y,currentRect.w,currentRect.h);
+  }
+}
+
+document.getElementById("excludeButton").onclick=()=>{
+  mode="exclude";excludeButton.classList.add("selected");forceButton.classList.remove("selected");
+};
+document.getElementById("forceButton").onclick=()=>{
+  mode="force";forceButton.classList.add("selected");excludeButton.classList.remove("selected");
+};
+
+
+function drawPreview(){
+  if(!video.videoWidth)return;
+
+  const w=video.videoWidth, h=video.videoHeight;
+  previewCanvas.width=w;
+  previewCanvas.height=h;
+
+  // 元フレームを読み込む
+  const source=document.createElement("canvas");
+  source.width=w;
+  source.height=h;
+  const sc=source.getContext("2d");
+  sc.drawImage(video,0,0,w,h);
+
+  const original=sc.getImageData(0,0,w,h);
+  const pixels=original.data;
+  const s=settings();
+
+  // 白色検出マスク
+  const mask=new Uint8Array(w*h);
+  const min=s.whiteMin;
+  const max=s.whiteMax;
+  const diff=s.colorDiff;
+
+  for(let i=0,p=0;i<pixels.length;i+=4,p++){
+    const r=pixels[i], g=pixels[i+1], b=pixels[i+2];
+    const low=Math.min(r,g,b);
+    const high=Math.max(r,g,b);
+
+    if(low>=min && high<=max && (high-low)<=diff){
+      mask[p]=1;
+    }
+  }
+
+  // マスク拡張（簡易的な矩形膨張）
+  const radius=Math.max(0,Math.floor(s.maskDilate/2));
+  const expanded=new Uint8Array(mask);
+  for(let y=0;y<h;y++){
+    for(let x=0;x<w;x++){
+      const p=y*w+x;
+      if(!mask[p])continue;
+      for(let yy=Math.max(0,y-radius);yy<=Math.min(h-1,y+radius);yy++){
+        for(let xx=Math.max(0,x-radius);xx<=Math.min(w-1,x+radius);xx++){
+          expanded[yy*w+xx]=1;
+        }
+      }
+    }
+  }
+
+  // 除外範囲・強制範囲を反映
+  const sx=w/canvas.width, sy=h/canvas.height;
+  for(const a of ranges){
+    const x1=Math.max(0,Math.floor(a.x));
+    const y1=Math.max(0,Math.floor(a.y));
+    const x2=Math.min(w,Math.floor(a.x+a.w));
+    const y2=Math.min(h,Math.floor(a.y+a.h));
+
+    for(let y=y1;y<y2;y++){
+      for(let x=x1;x<x2;x++){
+        const p=y*w+x;
+        if(a.type==="exclude") expanded[p]=0;
+        if(a.type==="force") expanded[p]=1;
+      }
+    }
+  }
+
+  // プレビュー用のぼかし画像を作成
+  const blurred=document.createElement("canvas");
+  blurred.width=w;
+  blurred.height=h;
+  const bc=blurred.getContext("2d");
+
+  if(s.blurType==="mosaic"){
+    const block=Math.max(2,Math.round(s.mosaicBlock));
+    const smallW=Math.max(1,Math.ceil(w/block));
+    const smallH=Math.max(1,Math.ceil(h/block));
+    const small=document.createElement("canvas");
+    small.width=smallW; small.height=smallH;
+    const sm=small.getContext("2d");
+    sm.drawImage(source,0,0,smallW,smallH);
+    bc.imageSmoothingEnabled=false;
+    bc.drawImage(small,0,0,smallW,smallH,0,0,w,h);
+  }else{
+    bc.filter=`blur(${Math.max(1,Math.round(s.blurSize/6))}px)`;
+    bc.drawImage(source,0,0,w,h);
+    bc.filter="none";
+  }
+
+  const blurImage=bc.getImageData(0,0,w,h);
+  const result=pctx.createImageData(w,h);
+
+  for(let p=0,i=0;p<w*h;p++,i+=4){
+    if(expanded[p]){
+      result.data[i]=blurImage.data[i];
+      result.data[i+1]=blurImage.data[i+1];
+      result.data[i+2]=blurImage.data[i+2];
+    }else{
+      result.data[i]=pixels[i];
+      result.data[i+1]=pixels[i+1];
+      result.data[i+2]=pixels[i+2];
+    }
+    result.data[i+3]=255;
+  }
+
+  pctx.putImageData(result,0,0);
+  statusBox.textContent="現在のフレーム全体に、白色検出と強制ぼかし範囲を適用しました。";
+}
+
+
+document.getElementById("processButton").onclick=async()=>{
+  const f=fileInput.files[0];
+
+  if(!f){
+    alert("動画を選択してください");
+    return;
+  }
+
+  processButton.disabled=true;
+  statusBox.textContent="アップロード中です。";
+
+  const progressBox=document.getElementById("progressBox");
+  const progressBar=document.getElementById("progressBar");
+
+  progressBox.style.display="block";
+  progressBar.style.width="0%";
+  progressBar.textContent="0%";
+
+  const fd=new FormData();
+  fd.append("video",f);
+  fd.append("ranges",JSON.stringify(ranges));
+  fd.append("settings",JSON.stringify(settings()));
+
+  try{
+    const r=await fetch("/process",{
+      method:"POST",
+      body:fd
+    });
+
+    const j=await r.json();
+
+    if(!r.ok){
+      throw new Error(j.error||"処理開始に失敗しました");
+    }
+
+    const job=j.job;
+
+    statusBox.textContent="動画を処理しています。";
+
+    while(true){
+      await new Promise(resolve=>setTimeout(resolve,500));
+
+      const pr=await fetch("/progress/"+job);
+      const pj=await pr.json();
+
+      const value=pj.progress;
+
+      if(value<0){
+        throw new Error("動画処理中にエラーが発生しました");
+      }
+
+      progressBar.style.width=value+"%";
+      progressBar.textContent=value+"%";
+
+      if(value>=100){
+        break;
+      }
+    }
+
+    statusBox.textContent="処理が完了しました。";
+
+    statusBox.innerHTML=
+      '処理完了：<a href="/download/'+job+'_clean.mp4" target="_blank">完成動画を開く</a>';
+
+  }catch(e){
+    statusBox.textContent="エラー: "+e.message;
+  }
+
+  processButton.disabled=false;
+};
+
+document.getElementById("previewButton").onclick=drawPreview;
+</script>
+</body>
+</html>
