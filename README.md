@@ -12,9 +12,9 @@
 
 ## スクリーンショット
 
-![アプリ画面1](screenshot1.png)
+![アプリ画面1](video-blur-tool/screenshot1.png)
 
-![アプリ画面2](screenshot2.png)
+![アプリ画面2](video-blur-tool/screenshot2.png)
 
 ## 主な機能
 
