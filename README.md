@@ -68,6 +68,9 @@ ffprobe -version
 ```
 
 ## 起動
+- windowsの場合はrun.batを実行します。
+
+- Linuxの場合は、下記を実行します。
 ```bash
 python app.py
 ```
