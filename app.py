@@ -90,7 +90,7 @@ def process_video(input_path, temp_path, ranges, settings, job):
         "ffprobe",
         "-v", "error",
         "-select_streams", "v:0",
-        "-show_entries", "stream=width,height,r_frame_rate,duration",
+        "-show_entries", "stream=width,height,r_frame_rate:format=duration",
         "-of", "default=noprint_wrappers=1:nokey=1",
         input_path
     ], capture_output=True, text=True, check=True)
