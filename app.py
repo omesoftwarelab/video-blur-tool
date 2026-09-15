@@ -77,10 +77,39 @@ def make_mask(img, ranges, settings):
 
 
 def replace_mask_with_median(img, mask, median_size):
-    median_img = cv2.medianBlur(img, median_size)
-
     result = img.copy()
-    result[mask > 0] = median_img[mask > 0]
+
+    ys, xs = np.where(mask > 0)
+
+    if len(xs) == 0:
+        return result
+
+    # メディアンフィルタの半径
+    radius = median_size // 2
+
+    # マスク全体を囲む矩形
+    x1 = max(0, xs.min() - radius)
+    y1 = max(0, ys.min() - radius)
+    x2 = min(img.shape[1], xs.max() + radius + 1)
+    y2 = min(img.shape[0], ys.max() + radius + 1)
+
+    # マスク周辺だけ切り出す
+    roi = img[y1:y2, x1:x2]
+
+    # ROIだけにメディアンフィルタ
+    median_roi = cv2.medianBlur(
+        roi,
+        median_size
+    )
+
+    # ROI内のマスク
+    mask_roi = mask[y1:y2, x1:x2]
+
+    # マスク部分だけ置き換える
+    result_roi = result[y1:y2, x1:x2]
+
+    result_roi[mask_roi > 0] = \
+        median_roi[mask_roi > 0]
 
     return result
 
@@ -247,6 +276,57 @@ def preview():
         "Content-Type": "image/jpeg"
     }
 
+@app.route("/preview_mask", methods=["POST"])
+def preview_mask():
+    if "image" not in request.files:
+        return jsonify(error="画像がありません"), 400
+
+    try:
+        ranges = json.loads(
+            request.form.get("ranges", "[]")
+        )
+
+        settings = json.loads(
+            request.form.get("settings", "{}")
+        )
+
+    except Exception:
+        return jsonify(error="範囲または設定が不正です"), 400
+
+    file = request.files["image"]
+
+    data = np.frombuffer(
+        file.read(),
+        np.uint8
+    )
+
+    img = cv2.imdecode(
+        data,
+        cv2.IMREAD_COLOR
+    )
+
+    if img is None:
+        return jsonify(error="画像を読み込めませんでした"), 400
+
+    # 既存のmake_mask()でフィルタ対象を生成
+    mask = make_mask(
+        img,
+        ranges,
+        settings
+    )
+
+    # マスクを白黒画像として返す
+    ok, encoded = cv2.imencode(
+        ".png",
+        mask
+    )
+
+    if not ok:
+        return jsonify(error="マスク画像の生成に失敗しました"), 500
+
+    return encoded.tobytes(), 200, {
+        "Content-Type": "image/png"
+    }
 
 @app.route("/process", methods=["POST"])
 def process():

@@ -136,6 +136,12 @@
 
 <div id="previewBox">
   <h3>プレビュー（白色検出＋強制ぼかし範囲）</h3>
+
+  <label>
+    <input type="checkbox" id="showMask">
+    マスクを表示
+  </label>
+
   <canvas id="previewCanvas"></canvas>
 </div>
 
@@ -197,6 +203,7 @@ const ctx = canvas.getContext("2d");
 
 const previewCanvas = document.getElementById("previewCanvas");
 const pctx = previewCanvas.getContext("2d");
+const showMask = document.getElementById("showMask");
 
 const statusBox = document.getElementById("status");
 
@@ -655,8 +662,12 @@ async function drawPreview() {
     );
 
     try {
+        const endpoint = showMask.checked
+            ? "/preview_mask"
+            : "/preview";
+
         const response = await fetch(
-            "/preview",
+            endpoint,
             {
                 method: "POST",
                 body: fd
@@ -671,11 +682,9 @@ async function drawPreview() {
             );
         }
 
-        const previewBlob =
-            await response.blob();
+        const previewBlob = await response.blob();
 
-        const url =
-            URL.createObjectURL(previewBlob);
+        const url = URL.createObjectURL(previewBlob);
 
         const img = new Image();
 
@@ -701,7 +710,9 @@ async function drawPreview() {
             URL.revokeObjectURL(url);
 
             statusBox.textContent =
-                "現在のフレームにメディアン処理を適用しました。";
+                showMask.checked
+                    ? "マスク画像を表示しました。"
+                    : "現在のフレームにメディアン処理を適用しました。";
         };
 
         img.src = url;
@@ -830,6 +841,13 @@ document.getElementById(
 document.getElementById(
     "previewButton"
 ).onclick = drawPreview;
+
+showMask.addEventListener(
+    "change",
+    drawPreview
+);
+
+
 </script>
 </body>
 </html>
